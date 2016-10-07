@@ -1,4 +1,4 @@
-(function(window, angular, undefined) {
+(function(window, angular) {
   'use strict';
 
   // Module global settings.
@@ -7,12 +7,68 @@
   // Module global flags.
   var flags = {
     sdk: false,
+    injectState: null,
     ready: false
   };
 
   // Deferred Object which will be resolved when the Facebook SDK is ready
   // and the `fbAsyncInit` function is called.
   var loadDeferred;
+
+  // Injects FB SDK into page
+  function injectSDK($q) {
+    var deferred,
+        src,
+        script;
+
+    deferred = $q.defer();
+
+    if (flags.injectState === 'success') {
+      deferred.resolve();
+      return deferred.promise;
+    }
+
+    if (flags.injectState === 'progress') {
+      loadDeferred.promise.then(function() {
+        deferred.resolve();
+        return deferred.promise;
+      });
+    }
+
+    src           = '//connect.facebook.net/' + settings.locale + '/sdk.js';
+    script        = document.createElement('script');
+
+    script.id     = 'facebook-jssdk';
+    script.async  = true;
+    deferred      = $q.defer();
+
+    // Prefix protocol
+    // for sure we don't want to ignore things, but this tests exists,
+    // but it isn't recognized by istanbul, so we give it a 'ignore if'
+    /* istanbul ignore if */
+    if (window.location.protocol.indexOf('file:') !== -1) {
+      src = 'https:' + src;
+    }
+
+    script.src = src;
+
+    script.onload = function() {
+      flags.sdk = true;
+      flags.injectState = 'success';
+
+      loadDeferred.promise.then(deferred.resolve);
+    };
+
+    script.onerror = function() {
+        flags.injectState = 'error';
+        deferred.reject();
+    };
+
+    // Fix for IE < 9, and yet supported by latest browsers
+    document.getElementsByTagName('head')[0].appendChild(script);
+
+    return deferred.promise;
+  }
 
   /**
    * @name facebook
@@ -230,7 +286,7 @@
             settings.appId = initSettings;
           }
 
-          if(angular.isNumber(initSettings)) {
+          if (angular.isNumber(initSettings)) {
             settings.appId = initSettings.toString();
           }
 
@@ -269,8 +325,16 @@
               return flags.ready;
             };
 
-            NgFacebook.prototype.login = function () {
+           /**
+            * Inject the SDK, used if you don't load the
+            * SDK when intially calling FacebookProvider#init.
+            * @return {Object} promise which is resolved when SDK is ready
+            */
+            NgFacebook.prototype.injectSDK = function() {
+              return injectSDK($q);
+            };
 
+            NgFacebook.prototype.login = function () {
               var d = $q.defer(),
                   args = Array.prototype.slice.call(arguments),
                   userFn,
@@ -290,7 +354,6 @@
                 if (angular.isFunction(userFn) && angular.isNumber(userFnIndex)) {
                   args.splice(userFnIndex, 1, function(response) {
                     $timeout(function() {
-
                       if (response && angular.isUndefined(response.error)) {
                         d.resolve(response);
                       } else {
@@ -530,29 +593,8 @@
         /**
          * SDK script injecting
          */
-         if(loadSDK) {
-          (function injectScript() {
-            var src           = '//connect.facebook.net/' + settings.locale + '/sdk.js',
-                script        = document.createElement('script');
-                script.id     = 'facebook-jssdk';
-                script.async  = true;
-
-            // Prefix protocol
-            // for sure we don't want to ignore things, but this tests exists,
-            // but it isn't recognized by istanbul, so we give it a 'ignore if'
-            /* istanbul ignore if */
-            if ($window.location.protocol.indexOf('file:') !== -1) {
-              src = 'https:' + src;
-            }
-
-            script.src = src;
-            script.onload = function() {
-              flags.sdk = true;
-            };
-
-            // Fix for IE < 9, and yet supported by latest browsers
-            document.getElementsByTagName('head')[0].appendChild(script);
-          })();
+        if (loadSDK) {
+          injectSDK($q);
         }
       }
     ]);
