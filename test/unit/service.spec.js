@@ -3,7 +3,7 @@ describe('Service: Facebook', function () {
     facebook,
     facebookProvider,
     $window,
-    $timeout,
+    $rootScope,
     fbSubscribeEventFunctions,
     fbUnsubscribeEventFunctions,
     getLoginStatusCallback,
@@ -17,10 +17,10 @@ describe('Service: Facebook', function () {
       facebookProvider = _FacebookProvider_;
     });
 
-    inject(function (_Facebook_, _$window_, _$timeout_) {
+    inject(function (_Facebook_, _$window_, _$rootScope_) {
       facebook = _Facebook_;
       $window = _$window_;
-      $timeout = _$timeout_;
+      $rootScope = _$rootScope_;
     });
 
     fbSubscribeEventFunctions = {};
@@ -52,23 +52,21 @@ describe('Service: Facebook', function () {
   it('should throw an error when no trying to initalize and no appId is provided', function() {
     expect(function() {
       $window.fbAsyncInit();
-      $timeout.flush();
+      $rootScope.$apply();
     }).toThrow('Missing appId setting.');
   });
 
-  // review(mrzymr): is this useful ?
-  it('should throw an error when using login method before initialization', function() {
-    var result;
+  it('should not throw an error when using login method before initialization', function() {
+    var rejectedHandler = jasmine.createSpy('rejectedHandler'),
+        result;
 
     facebook
       .login(angular.noop)
-      .then(angular.noop, function (response) {
-        result = response;
-      });
+      .catch(rejectedHandler);
 
-    $timeout.flush();
+    $rootScope.$apply();
 
-    expect(result).toBe('Facebook.login() called before Facebook SDK has loaded.');
+    expect(rejectedHandler).not.toHaveBeenCalled();
   });
 
   describe('after running $window.fbAsyncInit', function() {
@@ -76,7 +74,7 @@ describe('Service: Facebook', function () {
     beforeEach(function () {
       facebookProvider.init('123456');
       $window.fbAsyncInit();
-      $timeout.flush();
+      $rootScope.$apply();
     });
 
     it('isReady should answer with true', function() {
@@ -87,13 +85,13 @@ describe('Service: Facebook', function () {
       spyOn($rootScope, '$broadcast');
       var cbFn = function() {};
       fbSubscribeEventFunctions['comment.remove'](cbFn);
-      $timeout.flush();
+      $rootScope.$apply();
       expect($rootScope.$broadcast).toHaveBeenCalledWith('Facebook:uncomment', cbFn);
     }));
 
     it('should be mapped parseXFBML to window.FB.XFBML.parse', inject(function () {
       facebook.parseXFBML();
-      $timeout.flush();
+      $rootScope.$apply();
       expect($window.FB.XFBML.parse).toHaveBeenCalled();
     }));
 
@@ -112,13 +110,13 @@ describe('Service: Facebook', function () {
       facebook.subscribe('edge.remove', subCallbackFn);
       facebook.unsubscribe('edge.remove', unSubCallbackFn);
 
-      $timeout.flush();
+      $rootScope.$apply();
 
       fbSubscribeEventFunctions['comment.create'](null);
       fbSubscribeEventFunctions['edge.remove'](testData);
       fbUnsubscribeEventFunctions['edge.remove'](testData);
 
-      $timeout.flush();
+      $rootScope.$apply();
 
       expect($window.FB.Event.subscribe.calls.argsFor(0)[0]).toBe('comment.create');
       expect($window.FB.Event.subscribe.calls.argsFor(1)[0]).toBe('edge.remove');
@@ -139,12 +137,12 @@ describe('Service: Facebook', function () {
       facebook.getLoginStatus(getLoginStatusCallbackFn);
       facebook.api(apiCallbackFn);
 
-      $timeout.flush();
+      $rootScope.$apply();
 
       getLoginStatusCallback({ user: true });
       apiCallback(false);
 
-      $timeout.flush();
+      $rootScope.$apply();
 
       expect($window.FB.getLoginStatus).toHaveBeenCalled();
       expect(getLoginStatusCallbackFn).toHaveBeenCalled();
@@ -161,9 +159,11 @@ describe('Service: Facebook', function () {
         result = response;
       });
 
+      $rootScope.$apply();
+
       loginCallback(data);
 
-      $timeout.flush();
+      $rootScope.$apply();
 
       expect($window.FB.login).toHaveBeenCalled();
       expect(loginCallbackFn).toHaveBeenCalled();
@@ -178,9 +178,11 @@ describe('Service: Facebook', function () {
           result = 'test1';
         });
 
+      $rootScope.$apply();
+
       loginCallback(undefined);
 
-      $timeout.flush();
+      $rootScope.$apply();
 
       expect(result).toBe('test1');
     });
